@@ -34,30 +34,43 @@ var go = module.exports =
  * 
  * @name exorcist
  * @function
- * @param {String} file full path to the map file to which to write the extracted source map
+ * @param {Object} file full path to the map file to which to write the extracted source map
  * @param {String=} url  allows overriding the url at which the map file is found (default: name of map file)
  * @param {String=} root allows adjusting the source maps `sourceRoot` field (default: '')
+ * @param {Function} transformer function that can transform the final source map JSON object, before it's written to @file
  * @return {TransformStream} transform stream into which to pipe the code containing the source map
  */
-function exorcist(file, url, root) {
+function exorcist(opts) { //file, url, root) {
+  var file, url, root, transformer = false;
+  if ( "string" === (typeof arguments[0]) ) {
+    file = arguments[0];
+    url  = arguments[1];
+    root = arguments[2];
+    transformer = arguments[3];
+  } else {
+    file = opts.file;
+    url  = opts.url;
+    root = opts.root;
+    transformer = opts.transformer;
+  }
   var src = '';
 
   function ondata(d, _, cb) { src += d; cb(); }
   function onend(cb) {
-    var self = this;
     var separated = separate(src, file, root, url);
     if (!separated) {
-      self.emit(
-          'missing-map'
-        ,   'The code that you piped into exorcist contains no source map!\n'
-          + 'Therefore it was piped through as is and no external map file generated.'
+      this.emit(
+          'missing-map',
+          'The code that you piped into exorcist contains no source map!\n' +
+          'Therefore it was piped through as is and no external map file generated.'
       );
-      self.push(src);
-      return cb(); 
+      this.push(src);
+      return cb();
     }
-    self.push(separated.src);
-    fs.writeFile(file, separated.json, 'utf8', cb)
+    this.push(separated.src);
+    var finalJson = transformer ? transformer(separated.json) : separated.json;
+    fs.writeFile(file, finalJson, 'utf8', cb);
   }
 
   return through(ondata, onend);
-}
+};
